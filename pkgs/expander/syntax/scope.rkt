@@ -287,23 +287,14 @@
 ;; Adding, removing, or flipping a scope is propagated
 ;; lazily to subforms
 (define (apply-scope s sc op prop-op)
-  (if (shifted-multi-scope? sc)
-      (struct-copy syntax s
-                   [shifted-multi-scopes (fallback-update-first (syntax-shifted-multi-scopes s)
-                                                                (lambda (smss)
-                                                                  (op (fallback-first smss) sc)))]
-                   [scope-propagations (and (datum-has-elements? (syntax-content s))
-                                            (prop-op (syntax-scope-propagations s)
-                                                     sc
-                                                     (syntax-scopes s)
-                                                     (syntax-shifted-multi-scopes s)))])
-      (struct-copy syntax s
-                   [scopes (op (syntax-scopes s) sc)]
-                   [scope-propagations (and (datum-has-elements? (syntax-content s))
-                                            (prop-op (syntax-scope-propagations s)
-                                                     sc
-                                                     (syntax-scopes s)
-                                                     (syntax-shifted-multi-scopes s)))])))
+  (struct-copy syntax s
+               [scopes (fallback-update-first (syntax-scopes s)
+                                              (lambda (scs)
+                                                (op (fallback-first scs) sc)))]
+               [scope-propagations (and (datum-has-elements? (syntax-content s))
+                                        (prop-op (syntax-scope-propagations s)
+                                                 sc
+                                                 (syntax-scopes s)))]))
 
 (define (syntax-e/no-taint s)
   (propagate-taint! s)
@@ -318,15 +309,10 @@
                                                      prop
                                                      (syntax-scopes sub-s)
                                                      s)]
-                                            [shifted-multi-scopes (propagation-apply-shifted
-                                                                   prop
-                                                                   (syntax-shifted-multi-scopes sub-s)
-                                                                   s)]
                                             [scope-propagations (propagation-merge
                                                                  prop
                                                                  (syntax-scope-propagations sub-s)
-                                                                 (syntax-scopes sub-s)
-                                                                 (syntax-shifted-multi-scopes sub-s))])))])
+                                                                 (syntax-scopes sub-s))])))])
         (set-syntax-content! s new-content)
         (set-syntax-scope-propagations! s #f)
         new-content)
@@ -377,44 +363,43 @@
 ;; Pushes a multi-scope to accomodate multiple top-level namespaces.
 ;; See "fallback.rkt".
 (define (push-scope s sms)
-  (define-memo-lite (push smss/maybe-fallbacks)
-    (define smss (fallback-first smss/maybe-fallbacks))
+  (define-memo-lite (push scs/maybe-fallbacks)
+    (define scs (fallback-first scs/maybe-fallbacks))
     (cond
-     [(set-empty? smss) (set-add smss sms)]
-     [(set-member? smss sms) smss/maybe-fallbacks]
-     [else (fallback-push (set-add smss sms)
-                          smss/maybe-fallbacks)]))
+     [(set-empty? scs) (set-add scs sms)]
+     [(set-member? scs sms) scs/maybe-fallbacks]
+     [else (fallback-push (set-add scs sms)
+                          scs/maybe-fallbacks)]))
   (syntax-map s
               (lambda (tail? x) x)
               (lambda (s d)
                 (struct-copy syntax s
                              [content d]
-                             [shifted-multi-scopes
-                              (push (syntax-shifted-multi-scopes s))]))
+                             [scopes (push (syntax-scopes s))]))
               syntax-e/no-taint))
 
 ;; ----------------------------------------
 
-(struct propagation (prev-scs prev-smss scope-ops)
+(struct propagation (prev-scs scope-ops)
         #:property prop:propagation syntax-e)
 
-(define (propagation-add prop sc prev-scs prev-smss)
+(define (propagation-add prop sc prev-scs)
   (if prop
       (struct-copy propagation prop
                    [scope-ops (hash-set (propagation-scope-ops prop)
                                         sc
                                         'add)])
-      (propagation prev-scs prev-smss (hasheq sc 'add))))
+      (propagation prev-scs (hasheq sc 'add))))
 
-(define (propagation-remove prop sc prev-scs prev-smss)
+(define (propagation-remove prop sc prev-scs)
   (if prop
       (struct-copy propagation prop
                    [scope-ops (hash-set (propagation-scope-ops prop)
                                         sc
                                         'remove)])
-      (propagation prev-scs prev-smss (hasheq sc 'remove))))
+      (propagation prev-scs (hasheq sc 'remove))))
 
-(define (propagation-flip prop sc prev-scs prev-smss)
+(define (propagation-flip prop sc prev-scs)
   (if prop
       (let* ([ops (propagation-scope-ops prop)]
              [current-op (hash-ref ops sc #f)])
@@ -432,7 +417,7 @@
                                                [(add) 'remove]
                                                [(remove) 'add]
                                                [else 'flip])))])]))
-      (propagation prev-scs prev-smss (hasheq sc 'flip))))
+      (propagation prev-scs (hasheq sc 'flip))))
 
 (define (propagation-apply prop scs parent-s)
   (cond
@@ -440,50 +425,31 @@
     (syntax-scopes parent-s)]
    [else
     (define new-scs
-      (for/fold ([scs scs]) ([(sc op) (in-immutable-hash (propagation-scope-ops prop))]
-                             #:when (not (shifted-multi-scope? sc)))
-        (case op
-          [(add) (set-add scs sc)]
-          [(remove) (set-remove scs sc)]
-          [else (set-flip scs sc)])))
-    ;; Improve sharing if the result matches the parent:
-    (if (set=? new-scs (syntax-scopes parent-s))
-        (syntax-scopes parent-s)
-        (cache-or-reuse-set new-scs))]))
-
-(define (propagation-apply-shifted prop smss parent-s)
-  (cond
-   [(eq? (propagation-prev-smss prop) smss)
-    (syntax-shifted-multi-scopes parent-s)]
-   [else
-    (define new-smss
-      (for/fold ([smss smss]) ([(sms op) (in-immutable-hash (propagation-scope-ops prop))]
-                               #:when (shifted-multi-scope? sms))
+      (for/fold ([scs scs])
+                ([(sc op) (in-immutable-hash (propagation-scope-ops prop))])
         (fallback-update-first
-         smss
-         (lambda (smss)
+         scs
+         (lambda (scs)
            (case op
-             [(add) (set-add smss sms)]
-             [(remove) (set-remove smss sms)]
-             [else (set-flip smss sms)])))))
+             [(add) (set-add scs sc)]
+             [(remove) (set-remove scs sc)]
+             [else (set-flip scs sc)])))))
     ;; Improve sharing if the result clearly matches the parent:
-    (define parent-smss (syntax-shifted-multi-scopes parent-s))
-    (if (and (set? new-smss)
-             (set? parent-smss)
-             (set=? new-smss parent-smss))
-        parent-smss
-        (cache-or-reuse-hash new-smss))]))
+    (define parent-scs (syntax-scopes parent-s))
+    (if (and (set? new-scs)
+             (set? parent-scs)
+             (set=? new-scs parent-scs))
+        parent-scs
+        (cache-or-reuse-hash new-scs))]))
 
-(define (propagation-merge prop base-prop prev-scs prev-smss)
+(define (propagation-merge prop base-prop prev-scs)
   (cond
    [(not base-prop)
     (cond
-     [(and (eq? (propagation-prev-scs prop) prev-scs)
-           (eq? (propagation-prev-smss prop) prev-smss))
+     [(eq? (propagation-prev-scs prop) prev-scs)
       prop]
      [else
       (propagation prev-scs
-                   prev-smss
                    (propagation-scope-ops prop))])]
    [else
     (define new-ops
@@ -540,21 +506,23 @@
   (if (eqv? phase 0)
       s
       (let ()
-        (define-memo-lite (shift-all smss)
+        (define-memo-lite (shift-all scs)
           (fallback-map
-           smss
-           (lambda (smss)
-             (for*/seteq ([sms (in-set smss)]
-                          [new-sms (in-value (shift-multi-scope sms phase))]
-                          #:when new-sms)
-               new-sms))))
+           scs
+           (lambda (scs)
+             (for*/seteq ([sc (in-set scs)]
+                          [new-sc (in-value (if (shifted-multi-scope? sc)
+                                                (shift-multi-scope sc phase)
+                                                sc))]
+                          #:when new-sc)
+               new-sc))))
         (syntax-map s
                     (lambda (tail? d) d)
                     (lambda (s d)
                       (struct-copy syntax s
                                    [content d]
-                                   [shifted-multi-scopes
-                                    (shift-all (syntax-shifted-multi-scopes s))]))
+                                   [scopes
+                                    (shift-all (syntax-scopes s))]))
                     syntax-e/no-taint))))
 
 ;; ----------------------------------------
@@ -568,37 +536,25 @@
 (define (syntax-swap-scopes s src-scopes dest-scopes)
   (if (equal? src-scopes dest-scopes)
       s
-      (let-values ([(src-smss src-scs)
-                    (set-partition (for/seteq ([sc (in-set src-scopes)])
-                                     (generalize-scope sc))
-                                   shifted-multi-scope?
-                                   (seteq)
-                                   (seteq))]
-                   [(dest-smss dest-scs)
-                    (set-partition (for/seteq ([sc (in-set dest-scopes)])
-                                     (generalize-scope sc))
-                                   shifted-multi-scope?
-                                   (seteq)
-                                   (seteq))])
+      (let ([src-scs
+             (for/seteq ([sc (in-set src-scopes)])
+               (generalize-scope sc))]
+            [dest-scs
+             (for/seteq ([sc (in-set dest-scopes)])
+               (generalize-scope sc))])
         (define-memo-lite (swap-scs scs)
-          (if (subset? src-scs scs)
-              (set-union (set-subtract scs src-scs) dest-scs)
-              scs))
-        (define-memo-lite (swap-smss smss)
           (fallback-update-first
-           smss
-           (lambda (smss)
-             (if (subset? src-smss smss)
-                 (set-union (set-subtract smss src-smss) dest-smss)
-                 smss))))
+           scs
+           (lambda (scs)
+             (if (subset? src-scs scs)
+                 (set-union (set-subtract scs src-scs) dest-scs)
+                 scs))))
         (syntax-map s
                     (lambda (tail? d) d)
                     (lambda (s d)
                       (struct-copy syntax s
                                    [content d]
-                                   [scopes (swap-scs (syntax-scopes s))]
-                                   [shifted-multi-scopes
-                                    (swap-smss (syntax-shifted-multi-scopes s))]))
+                                   [scopes (swap-scs (syntax-scopes s))]))
                     syntax-e/no-taint))))
 
 ;; ----------------------------------------
@@ -606,17 +562,23 @@
 ;; Assemble the complete set of scopes at a given phase by extracting
 ;; a phase-specific representative from each multi-scope.
 (define (syntax-scope-set s phase)
-  (scope-set-at-fallback s (fallback-first (syntax-shifted-multi-scopes s)) phase))
-  
-(define (scope-set-at-fallback s smss phase)
-  (for*/fold ([scopes (syntax-scopes s)]) ([sms (in-set smss)]
-                                           #:when (or (label-phase? phase)
-                                                      (not (shifted-to-label-phase? (shifted-multi-scope-phase sms)))))
-    (set-add scopes (multi-scope-to-scope-at-phase (shifted-multi-scope-multi-scope sms)
-                                                   (let ([ph (shifted-multi-scope-phase sms)])
-                                                     (if (shifted-to-label-phase? ph)
-                                                         (shifted-to-label-phase-from ph)
-                                                         (phase- ph phase)))))))
+  (scope-set-at-fallback (fallback-first (syntax-scopes s)) phase))
+
+(define (scope-set-at-fallback scs phase)
+  (for*/fold ([scopes (seteq)])
+             ([scope (in-set scs)])
+    (cond [(not (shifted-multi-scope? scope))
+           (set-add scopes scope)]
+          [(or (label-phase? phase)
+               (not (shifted-to-label-phase? (shifted-multi-scope-phase scope))))
+           (set-add scopes
+                    (multi-scope-to-scope-at-phase
+                     (shifted-multi-scope-multi-scope scope)
+                     (let ([ph (shifted-multi-scope-phase scope)])
+                       (if (shifted-to-label-phase? ph)
+                           (shifted-to-label-phase-from ph)
+                           (phase- ph phase)))))]
+          [else scopes])))
 
 (define (find-max-scope scopes)
   (when (set-empty? scopes)
@@ -639,11 +601,11 @@
   (clear-resolve-cache!))
 
 (define (syntax-any-scopes? s)
-  (not (set-empty? (syntax-scopes s))))
+  (not (set-empty? (fallback-first (syntax-scopes s)))))
 
 (define (syntax-any-macro-scopes? s)
-  (for/or ([sc (in-set (syntax-scopes s))])
-    (eq? (scope-kind sc) 'macro)))
+  (for/or ([sc (in-set (fallback-first (syntax-scopes s)))])
+    (and (scope? sc) (eq? (scope-kind sc) 'macro))))
 
 ;; ----------------------------------------
 
@@ -656,14 +618,14 @@
                  ;; For resolving bulk bindings in `free-identifier=?` chains:
                  #:extra-shifts [extra-shifts null])
   (define sym (syntax-content s))
-  (let fallback-loop ([smss (syntax-shifted-multi-scopes s)])
+  (let fallback-loop ([scs (syntax-scopes s)])
     (cond
      [(and (not exactly?)
            (not get-scopes?)
-           (resolve-cache-get sym phase (syntax-scopes s) (fallback-first smss)))
+           (resolve-cache-get sym phase (fallback-first scs)))
       => (lambda (b) b)]
      [else
-      (define scopes (scope-set-at-fallback s (fallback-first smss) phase))
+      (define scopes (scope-set-at-fallback (fallback-first scs) phase))
       ;; As we look through all scopes, if we find two where neither
       ;; is a subset of the other, accumulate them into a list; maybe
       ;; we find a superset of both, later; if we end with a list,
@@ -696,11 +658,11 @@
             (values (list best-scopes b-scopes) #f)])))
       (cond
        [(pair? best-scopes) ; => ambiguous
-        (if (fallback? smss)
-            (fallback-loop (fallback-rest smss))
+        (if (fallback? scs)
+            (fallback-loop (fallback-rest scs))
             ambiguous-value)]
        [best-scopes
-        (resolve-cache-set! sym phase (syntax-scopes s) (fallback-first smss) best-binding)
+        (resolve-cache-set! sym phase (fallback-first scs) best-binding)
         (and (or (not exactly?)
                  (eqv? (set-count scopes)
                        (set-count best-scopes)))
@@ -708,8 +670,8 @@
                  best-scopes
                  best-binding))]
        [else
-        (if (fallback? smss)
-            (fallback-loop (fallback-rest smss))
+        (if (fallback? scs)
+            (fallback-loop (fallback-rest scs))
             #f)])])))
 
 ;; ----------------------------------------
