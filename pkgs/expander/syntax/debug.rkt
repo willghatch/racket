@@ -12,11 +12,11 @@
 
 (define (syntax-debug-info s phase all-bindings?)
   (define hts
-    (for/list ([smss (in-list (fallback->list (syntax-shifted-multi-scopes s)))])
+    (for/list ([scopes (in-list (fallback->list (syntax-scopes s)))])
       (define init-ht (if (identifier? s)
                           (hasheq 'name (syntax-e s))
                           #hasheq()))
-      (define s-scs (scope-set-at-fallback s smss phase))
+      (define s-scs (scope-set-at-fallback scopes phase))
       (define context (scope-set->context s-scs))
       (define context-ht (hash-set init-ht 'context context))
       (define sym (syntax-e s))
