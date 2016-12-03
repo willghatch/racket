@@ -1,5 +1,5 @@
 #lang racket/base
-(require "../common/set.rkt"
+(require ;"../common/set.rkt"
          "../compile/serialize-property.rkt"
          "../compile/serialize-state.rkt"
          "../common/memo.rkt"
@@ -25,7 +25,7 @@
          syntax-e ; handles lazy scope and taint propagation
          syntax-e/no-taint ; like `syntax-e`, but doesn't explode a dye pack
          
-         syntax-scope-set
+         syntax-scope-list
          syntax-any-scopes?
          syntax-any-macro-scopes?
          
@@ -56,12 +56,18 @@
          shifted-multi-scope?
          shifted-multi-scope<?)
 
+(define (list-member? lst to-find)
+  (not (not (member to-find lst))))
+(define (list-add lst elem)
+  (cons elem lst))
+
 (module+ for-debug
   (provide (struct-out scope)
            (struct-out multi-scope)
            (struct-out representative-scope)
-           scope-set-at-fallback))
+           scope-list-at-fallback))
 
+;; TODO - no longer correct for lists
 ;; A scope represents a distinct "dimension" of binding. We can attach
 ;; the bindings for a set of scopes to an arbitrary scope in the set;
 ;; we pick the most recently allocated scope to make a binding search
@@ -81,7 +87,7 @@
           (write-string ">" port))
         #:property prop:serialize
         (lambda (s ser-push! state)
-          (unless (set-member? (serialize-state-reachable-scopes state) s)
+          (unless (list-member? (serialize-state-reachable-scopes state) s)
             (error "internal error: found supposedly unreachable scope"))
           (cond
            [(eq? s top-level-common-scope)
@@ -366,9 +372,9 @@
   (define-memo-lite (push scs/maybe-fallbacks)
     (define scs (fallback-first scs/maybe-fallbacks))
     (cond
-     [(set-empty? scs) (set-add scs sms)]
-     [(set-member? scs sms) scs/maybe-fallbacks]
-     [else (fallback-push (set-add scs sms)
+     [(empty? scs) (list-add scs sms)]
+     [(list-member? scs sms) scs/maybe-fallbacks]
+     [else (fallback-push (list-add scs sms)
                           scs/maybe-fallbacks)]))
   (syntax-map s
               (lambda (tail? x) x)
@@ -510,11 +516,11 @@
           (fallback-map
            scs
            (lambda (scs)
-             (for*/seteq ([sc (in-set scs)]
-                          [new-sc (in-value (if (shifted-multi-scope? sc)
-                                                (shift-multi-scope sc phase)
-                                                sc))]
-                          #:when new-sc)
+             (for*/list ([sc scs]
+                         [new-sc (in-value (if (shifted-multi-scope? sc)
+                                               (shift-multi-scope sc phase)
+                                               sc))]
+                         #:when new-sc)
                new-sc))))
         (syntax-map s
                     (lambda (tail? d) d)
@@ -561,32 +567,30 @@
 
 ;; Assemble the complete set of scopes at a given phase by extracting
 ;; a phase-specific representative from each multi-scope.
-(define (syntax-scope-set s phase)
-  (scope-set-at-fallback (fallback-first (syntax-scopes s)) phase))
+(define (syntax-scope-list s phase)
+  (scope-list-at-fallback (fallback-first (syntax-scopes s)) phase))
 
-(define (scope-set-at-fallback scs phase)
-  (for*/fold ([scopes (seteq)])
-             ([scope (in-set scs)])
-    (cond [(not (shifted-multi-scope? scope))
-           (set-add scopes scope)]
-          [(or (label-phase? phase)
-               (not (shifted-to-label-phase? (shifted-multi-scope-phase scope))))
-           (set-add scopes
-                    (multi-scope-to-scope-at-phase
-                     (shifted-multi-scope-multi-scope scope)
-                     (let ([ph (shifted-multi-scope-phase scope)])
-                       (if (shifted-to-label-phase? ph)
-                           (shifted-to-label-phase-from ph)
-                           (phase- ph phase)))))]
-          [else scopes])))
+(define (scope-list-at-fallback scs phase)
+  (reverse
+   (for*/fold ([scopes (list)])
+              ([scope (in-list scs)])
+     (cond [(not (shifted-multi-scope? scope))
+            (list-add scopes scope)]
+           [(or (label-phase? phase)
+                (not (shifted-to-label-phase? (shifted-multi-scope-phase scope))))
+            (list-add scopes
+                      (multi-scope-to-scope-at-phase
+                       (shifted-multi-scope-multi-scope scope)
+                       (let ([ph (shifted-multi-scope-phase scope)])
+                         (if (shifted-to-label-phase? ph)
+                             (shifted-to-label-phase-from ph)
+                             (phase- ph phase)))))]
+           [else scopes]))))
 
 (define (find-max-scope scopes)
-  (when (set-empty? scopes)
+  (when (empty? scopes)
     (error "cannot bind in empty scope set"))
-  (for/fold ([max-sc (set-first scopes)]) ([sc (in-set scopes)])
-    (if (scope>? sc max-sc)
-        sc
-        max-sc)))
+  (car scopes))
 
 (define (add-binding-in-scopes! scopes sym binding #:just-for-nominal? [just-for-nominal? #f])
   (define max-sc (find-max-scope scopes))
@@ -601,10 +605,10 @@
   (clear-resolve-cache!))
 
 (define (syntax-any-scopes? s)
-  (not (set-empty? (fallback-first (syntax-scopes s)))))
+  (not (empty? (fallback-first (syntax-scopes s)))))
 
 (define (syntax-any-macro-scopes? s)
-  (for/or ([sc (in-set (fallback-first (syntax-scopes s)))])
+  (for/or ([sc (fallback-first (syntax-scopes s))])
     (and (scope? sc) (eq? (scope-kind sc) 'macro))))
 
 ;; ----------------------------------------
@@ -614,7 +618,7 @@
 (define (resolve s phase
                  #:ambiguous-value [ambiguous-value #f]
                  #:exactly? [exactly? #f]
-                 #:get-scopes? [get-scopes? #f] ; gets scope set instead of binding
+                 #:get-scopes? [get-scopes? #f] ; gets scope list instead of binding
                  ;; For resolving bulk bindings in `free-identifier=?` chains:
                  #:extra-shifts [extra-shifts null])
   (define sym (syntax-content s))
@@ -625,7 +629,7 @@
            (resolve-cache-get sym phase (fallback-first scs)))
       => (lambda (b) b)]
      [else
-      (define scopes (scope-set-at-fallback (fallback-first scs) phase))
+      (define scopes (scope-list-at-fallback (fallback-first scs) phase))
       ;; As we look through all scopes, if we find two where neither
       ;; is a subset of the other, accumulate them into a list; maybe
       ;; we find a superset of both, later; if we end with a list,
