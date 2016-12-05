@@ -60,6 +60,16 @@
   (not (not (member to-find lst))))
 (define (list-add lst elem)
   (cons elem lst))
+(define (list-add-idempotent lst elem)
+  (if (member elem lst)
+      lst
+      (cons elem lst)))
+(define (list-remove lst elem)
+  (remove elem lst))
+(define (list-flip lst elem)
+  (if (member elem lst)
+      (remove elem lst)
+      (cons elem lst)))
 
 (module+ for-debug
   (provide (struct-out scope)
@@ -341,26 +351,21 @@
       sc))
 
 (define (add-scope s sc)
-  (apply-scope s (generalize-scope sc) set-add propagation-add))
+  (apply-scope s (generalize-scope sc) list-add-idempotent propagation-add))
 
 (define (add-scopes s scs)
   (for/fold ([s s]) ([sc (in-list scs)])
     (add-scope s sc)))
 
 (define (remove-scope s sc)
-  (apply-scope s (generalize-scope sc) set-remove propagation-remove))
+  (apply-scope s (generalize-scope sc) list-remove propagation-remove))
 
 (define (remove-scopes s scs)
   (for/fold ([s s]) ([sc (in-list scs)])
     (remove-scope s sc)))
 
-(define (set-flip s e)
-  (if (set-member? s e)
-      (set-remove s e)
-      (set-add s e)))
-
 (define (flip-scope s sc)
-  (apply-scope s (generalize-scope sc) set-flip propagation-flip))
+  (apply-scope s (generalize-scope sc) list-flip propagation-flip))
 
 (define (flip-scopes s scs)
   (for/fold ([s s]) ([sc (in-list scs)])
@@ -372,7 +377,7 @@
   (define-memo-lite (push scs/maybe-fallbacks)
     (define scs (fallback-first scs/maybe-fallbacks))
     (cond
-     [(empty? scs) (list-add scs sms)]
+     [(null? scs) (list-add scs sms)]
      [(list-member? scs sms) scs/maybe-fallbacks]
      [else (fallback-push (list-add scs sms)
                           scs/maybe-fallbacks)]))
@@ -389,41 +394,21 @@
 (struct propagation (prev-scs scope-ops)
         #:property prop:propagation syntax-e)
 
-(define (propagation-add prop sc prev-scs)
-  (if prop
-      (struct-copy propagation prop
-                   [scope-ops (hash-set (propagation-scope-ops prop)
-                                        sc
-                                        'add)])
-      (propagation prev-scs (hasheq sc 'add))))
+(define (mk-propagation-extend op)
+  (λ (prop sc prev-scs)
+    (if prop
+        (struct-copy propagation prop
+                     [scope-ops (list-add (propagation-scope-ops prop)
+                                          (cons sc op))])
+        (propagation prev-scs (list (cons sc op))))))
 
-(define (propagation-remove prop sc prev-scs)
-  (if prop
-      (struct-copy propagation prop
-                   [scope-ops (hash-set (propagation-scope-ops prop)
-                                        sc
-                                        'remove)])
-      (propagation prev-scs (hasheq sc 'remove))))
+(define propagation-add
+  (mk-propagation-extend 'add))
+(define propagation-remove
+  (mk-propagation-extend 'remove))
+(define propagation-flip
+  (mk-propagation-extend 'flip))
 
-(define (propagation-flip prop sc prev-scs)
-  (if prop
-      (let* ([ops (propagation-scope-ops prop)]
-             [current-op (hash-ref ops sc #f)])
-        (cond
-         [(and (eq? current-op 'flip)
-               (= 1 (hash-count ops)))
-          ;; Nothing left to propagate
-          #f]
-         [else
-          (struct-copy propagation prop
-                       [scope-ops
-                        (if (eq? current-op 'flip)
-                            (hash-remove ops sc)
-                            (hash-set ops sc (case current-op
-                                               [(add) 'remove]
-                                               [(remove) 'add]
-                                               [else 'flip])))])]))
-      (propagation prev-scs (hasheq sc 'flip))))
 
 (define (propagation-apply prop scs parent-s)
   (cond
@@ -432,21 +417,23 @@
    [else
     (define new-scs
       (for/fold ([scs scs])
-                ([(sc op) (in-immutable-hash (propagation-scope-ops prop))])
+                ([(sc-op-pair) (propagation-scope-ops prop)])
+        (define sc (car sc-op-pair))
+        (define op (cdr sc-op-pair))
         (fallback-update-first
          scs
          (lambda (scs)
            (case op
-             [(add) (set-add scs sc)]
-             [(remove) (set-remove scs sc)]
-             [else (set-flip scs sc)])))))
+             [(add) (list-add-idempotent scs sc)]
+             [(remove) (list-remove scs sc)]
+             [else (list-flip scs sc)])))))
     ;; Improve sharing if the result clearly matches the parent:
     (define parent-scs (syntax-scopes parent-s))
-    (if (and (set? new-scs)
-             (set? parent-scs)
-             (set=? new-scs parent-scs))
+    (if (and (pair? new-scs)
+             (pair? parent-scs)
+             (equal? new-scs parent-scs))
         parent-scs
-        (cache-or-reuse-hash new-scs))]))
+        (cache-or-reuse-list new-scs))]))
 
 (define (propagation-merge prop base-prop prev-scs)
   (cond
@@ -459,21 +446,13 @@
                    (propagation-scope-ops prop))])]
    [else
     (define new-ops
-      (for/fold ([ops (propagation-scope-ops base-prop)]) ([(sc op) (in-immutable-hash (propagation-scope-ops prop))])
-        (case op
-          [(add) (hash-set ops sc 'add)]
-          [(remove) (hash-set ops sc 'remove)]
-          [else ; flip
-           (define current-op (hash-ref ops sc #f))
-           (case current-op
-             [(add) (hash-set ops sc 'remove)]
-             [(remove) (hash-set ops sc 'add)]
-             [(flip) (hash-remove ops sc)]
-             [else (hash-set ops sc 'flip)])])))
-    (if (zero? (hash-count new-ops))
+      (append (propagation-scope-ops prop) (propagation-scope-ops base-prop)))
+    (if (null? new-ops)
         #f
         (struct-copy propagation base-prop
                      [scope-ops new-ops]))]))
+
+
 
 ;; ----------------------------------------
 
@@ -540,7 +519,8 @@
 ;; additional scopes due to `module->namespace` on a module that was
 ;; expanded multiple times (where each expansion adds scopes).
 (define (syntax-swap-scopes s src-scopes dest-scopes)
-  (if (equal? src-scopes dest-scopes)
+  s
+  #;(if (equal? src-scopes dest-scopes)
       s
       (let ([src-scs
              (for/seteq ([sc (in-set src-scopes)])
@@ -588,7 +568,7 @@
            [else scopes]))))
 
 (define (find-max-scope scopes)
-  (when (empty? scopes)
+  (when (null? scopes)
     (error "cannot bind in empty scope set"))
   (car scopes))
 
@@ -605,7 +585,7 @@
   (clear-resolve-cache!))
 
 (define (syntax-any-scopes? s)
-  (not (empty? (fallback-first (syntax-scopes s)))))
+  (not (null? (fallback-first (syntax-scopes s)))))
 
 (define (syntax-any-macro-scopes? s)
   (for/or ([sc (fallback-first (syntax-scopes s))])
@@ -630,58 +610,34 @@
       => (lambda (b) b)]
      [else
       (define scopes (scope-list-at-fallback (fallback-first scs) phase))
-      ;; As we look through all scopes, if we find two where neither
-      ;; is a subset of the other, accumulate them into a list; maybe
-      ;; we find a superset of both, later; if we end with a list,
-      ;; then the binding is ambiguous. We expect that creating a list
-      ;; of ambigious scopes is rare relative to eventual success.
-      (define-values (best-scopes best-binding)
-        (for*/fold ([best-scopes #f] [best-binding #f])
-                   ([sc (in-set scopes)]
-                    [(b-scopes binding) (in-binding-table sym (scope-binding-table sc) s extra-shifts)]
-                    #:when (and b-scopes binding (subset? b-scopes scopes)))
-          (cond
-           [(pair? best-scopes)
-            ;; We have a list of scopes where none is a superset of the others
-            (cond
-             [(for/and ([amb-scopes (in-list best-scopes)])
-                (subset? amb-scopes b-scopes))
-              ;; Found a superset of all
-              (values b-scopes binding)]
-             [else
-              ;; Accumulate another ambiguous set
-              (values (cons b-scopes best-scopes) #f)])]
-           [(not best-scopes)
-            (values b-scopes binding)]
-           [(subset? b-scopes best-scopes) ; can be `set=?` if binding is overridden
-            (values best-scopes best-binding)]
-           [(subset? best-scopes b-scopes)
-            (values b-scopes binding)]
-           [else
-            ;; Switch to ambigous mode
-            (values (list best-scopes b-scopes) #f)])))
+
+      (define best-pair
+        (let loop ([scopes scopes])
+          (and (not (null? scopes))
+               (or (for/or ([(b-scopes binding) (in-binding-table sym (scope-binding-table (car scopes)) s extra-shifts)])
+                     (and (equal? b-scopes scopes)
+                          (cons b-scopes binding)))
+                   (loop (cdr scopes))))))
+
       (cond
-       [(pair? best-scopes) ; => ambiguous
-        (if (fallback? scs)
-            (fallback-loop (fallback-rest scs))
-            ambiguous-value)]
-       [best-scopes
-        (resolve-cache-set! sym phase (fallback-first scs) best-binding)
-        (and (or (not exactly?)
-                 (eqv? (set-count scopes)
-                       (set-count best-scopes)))
-             (if get-scopes?
-                 best-scopes
-                 best-binding))]
-       [else
-        (if (fallback? scs)
-            (fallback-loop (fallback-rest scs))
-            #f)])])))
+        [best-pair ;; one scope list
+         (define-values (best-scopes best-binding) (values (car best-pair) (cdr best-pair)))
+         (resolve-cache-set! sym phase (fallback-first scs) best-binding)
+         (and (or (not exactly?)
+                  (eqv? (length scopes)
+                        (length best-scopes)))
+              (if get-scopes?
+                  best-scopes
+                  best-binding))]
+        [else
+         (if (fallback? scs)
+             (fallback-loop (fallback-rest scs))
+             #f)])])))
 
 ;; ----------------------------------------
 
 (define (bound-identifier=? a b phase)
   (and (eq? (syntax-e a)
             (syntax-e b))
-       (equal? (syntax-scope-set a phase)
-               (syntax-scope-set b phase))))
+       (equal? (syntax-scope-list a phase)
+               (syntax-scope-list b phase))))

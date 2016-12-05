@@ -5,8 +5,8 @@
          resolve-cache-get
          resolve-cache-set!
          
-         cache-or-reuse-set
-         cache-or-reuse-hash)
+         cache-or-reuse-list
+         )
 
 (define cache (box (make-weak-box #f)))
 
@@ -54,11 +54,8 @@
 
 (define NUM-CACHE-SLOTS 8)
 
-(define cached-sets (make-weak-box (make-vector NUM-CACHE-SLOTS #f)))
-(define cached-sets-pos 0)
-
-(define cached-hashes (make-weak-box (make-vector NUM-CACHE-SLOTS #f)))
-(define cached-hashes-pos 0)
+(define cached-lists (make-weak-box (make-vector NUM-CACHE-SLOTS #f)))
+(define cached-lists-pos 0)
 
 (define-syntax-rule (define-cache-or-reuse cache-or-reuse cached cached-pos same?)
   (define (cache-or-reuse s)
@@ -75,5 +72,4 @@
           (set! cached-pos (modulo (add1 cached-pos) NUM-CACHE-SLOTS))
           s))))
 
-(define-cache-or-reuse cache-or-reuse-set cached-sets cached-sets-pos set=?)
-(define-cache-or-reuse cache-or-reuse-hash cached-hashes cached-hashes-pos equal?)
+(define-cache-or-reuse cache-or-reuse-list cached-lists cached-lists-pos equal?)
