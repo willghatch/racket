@@ -354,7 +354,7 @@
   (apply-scope s (generalize-scope sc) list-add-idempotent propagation-add))
 
 (define (add-scopes s scs)
-  (for/fold ([s s]) ([sc (in-list scs)])
+  (for/fold ([s s]) ([sc (in-list (reverse scs))])
     (add-scope s sc)))
 
 (define (remove-scope s sc)
@@ -368,7 +368,7 @@
   (apply-scope s (generalize-scope sc) list-flip propagation-flip))
 
 (define (flip-scopes s scs)
-  (for/fold ([s s]) ([sc (in-list scs)])
+  (for/fold ([s s]) ([sc (in-list (reverse scs))])
     (flip-scope s sc)))
 
 ;; Pushes a multi-scope to accomodate multiple top-level namespaces.

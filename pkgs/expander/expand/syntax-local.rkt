@@ -136,8 +136,9 @@
                            (or (and (identifier? base-s)
                                     (resolve base-s phase #:get-scopes? #t))
                                (list))))
-  aoeuaoeuaoeu
-  (define delta-scs (set->list (set-subtract ext-scs use-base-scs)))
+  (define delta-scs (if (list-suffix? use-base-scs ext-scs)
+                        (reverse (list-tail (reverse ext-scs) (length use-base-scs)))
+                        ext-scs))
   (define maybe-taint (if (syntax-clean? ext-s) values syntax-taint))
   (lambda (s [mode 'add])
     (maybe-taint
