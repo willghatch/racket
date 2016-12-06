@@ -16,27 +16,27 @@
       (define init-ht (if (identifier? s)
                           (hasheq 'name (syntax-e s))
                           #hasheq()))
-      (define s-scs (scope-set-at-fallback scopes phase))
-      (define context (scope-set->context s-scs))
+      (define s-scs (scope-list-at-fallback scopes phase))
+      (define context (scope-list->context s-scs))
       (define context-ht (hash-set init-ht 'context context))
       (define sym (syntax-e s))
       (define bindings
         (cond
          [(identifier? s)
           (define-values (bindings covered-scopess)
-            (for*/fold ([bindings null] [covered-scope-sets (set)])
-                       ([sc (in-set s-scs)]
+            (for*/fold ([bindings null] [covered-scope-lists (set)])
+                       ([sc (in-list s-scs)]
                         [(scs b) (in-binding-table sym (scope-binding-table sc) s null)]
                         #:when (and scs b
                                     (or all-bindings?
-                                        (subset? scs s-scs))
+                                        (list-suffix? scs s-scs))
                                     ;; Skip overidden:
-                                    (not (set-member? covered-scope-sets scs))))
+                                    (not (set-member? covered-scope-lists scs))))
               (values
                (cons
                 (hash 'name (syntax-e s)
-                      'context (scope-set->context scs)
-                      'match? (subset? scs s-scs)
+                      'context (scope-list->context scs)
+                      'match? (list-suffix? scs s-scs)
                       (if (local-binding? b)
                           'local
                           'module)
@@ -46,7 +46,7 @@
                                   (module-binding-module b)
                                   (module-binding-phase b))))
                 bindings)
-               (set-add covered-scope-sets scs))))
+               (set-add covered-scope-lists scs))))
           bindings]
          [else null]))
       (if (null? bindings)
@@ -57,9 +57,9 @@
       ht
       (hash-set ht 'fallbacks (cdr hts))))
 
-(define (scope-set->context scs)
+(define (scope-list->context scs)
   (sort
-   (for/list ([sc (in-set scs)])
+   (for/list ([sc (in-list scs)])
      (if (representative-scope? sc)
          (vector (scope-id sc)
                  (scope-kind sc)

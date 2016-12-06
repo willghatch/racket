@@ -8,7 +8,7 @@
 (provide syntax-mapped-names)
 
 (define (syntax-mapped-names s phase)
-  (define s-scs (syntax-scope-set s phase))
-  (for/fold ([syms (seteq)]) ([sc (in-set s-scs)])
+  (define s-scs (syntax-scope-list s phase))
+  (for/fold ([syms (seteq)]) ([sc s-scs])
     (set-union syms
                (binding-table-symbols (scope-binding-table sc) s-scs s null))))

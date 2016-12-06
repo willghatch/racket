@@ -129,13 +129,14 @@
     (raise-argument-error 'make-syntax-delta-introducer "(or/c syntax? #f)" base-s))
   (unless (phase? phase)
     (raise-argument-error 'make-syntax-delta-introducer phase?-string phase))
-  (define ext-scs (syntax-scope-set ext-s phase))
-  (define base-scs (syntax-scope-set (or base-s empty-syntax) phase))
-  (define use-base-scs (if (subset? base-scs ext-scs)
+  (define ext-scs (syntax-scope-list ext-s phase))
+  (define base-scs (syntax-scope-list (or base-s empty-syntax) phase))
+  (define use-base-scs (if (list-suffix? base-scs ext-scs)
                            base-scs
                            (or (and (identifier? base-s)
                                     (resolve base-s phase #:get-scopes? #t))
-                               (seteq))))
+                               (list))))
+  aoeuaoeuaoeu
   (define delta-scs (set->list (set-subtract ext-scs use-base-scs)))
   (define maybe-taint (if (syntax-clean? ext-s) values syntax-taint))
   (lambda (s [mode 'add])

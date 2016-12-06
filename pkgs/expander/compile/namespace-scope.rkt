@@ -1,6 +1,5 @@
 #lang racket/base
-(require "../common/set.rkt"
-         "../syntax/syntax.rkt"
+(require "../syntax/syntax.rkt"
          "../syntax/scope.rkt"
          "../common/phase.rkt"
          "../namespace/namespace.rkt"
@@ -37,9 +36,9 @@
 (define (extract-namespace-scopes/values ns)
   (define root-ctx (namespace-get-root-expand-ctx ns))
   (define post-expansion-sc (root-expand-context-post-expansion-scope root-ctx))
-  (values (seteq post-expansion-sc)
-          (set-remove (list->seteq (root-expand-context-module-scopes root-ctx))
-                      post-expansion-sc)))
+  (values (list post-expansion-sc)
+          (remove post-expansion-sc
+                  (root-expand-context-module-scopes root-ctx))))
 
 (define (extract-namespace-scopes ns)
   (define-values (scs-post scs-other) (extract-namespace-scopes/values ns))
@@ -49,19 +48,19 @@
 (define (encode-namespace-scopes ns)
   (define-values (post-expansion-scs other-scs) (extract-namespace-scopes/values ns))
   (define post-expansion-s (add-scopes (datum->syntax #f 'post)
-                                       (set->list post-expansion-scs)))
+                                       post-expansion-scs))
   (define other-s (add-scopes (datum->syntax #f 'other)
-                              (set->list other-scs)))
+                              other-scs))
   (datum->syntax #f (vector post-expansion-s other-s)))
 
 ;; Decoding, used at run time:
 (define (decode-namespace-scopes stx)
   (define vec (syntax-e stx))
-  (values (syntax-scope-set (vector-ref vec 0) 0)
-          (syntax-scope-set (vector-ref vec 1) 0)))
+  (values (syntax-scope-list (vector-ref vec 0) 0)
+          (syntax-scope-list (vector-ref vec 1) 0)))
 
 (define (namespace-scopes=? nss1 nss2)
-  (and (set=? (namespace-scopes-post nss1)
-              (namespace-scopes-post nss2))
-       (set=? (namespace-scopes-other nss1)
-              (namespace-scopes-other nss2))))
+  (and (equal? (namespace-scopes-post nss1)
+               (namespace-scopes-post nss2))
+       (equal? (namespace-scopes-other nss1)
+               (namespace-scopes-other nss2))))

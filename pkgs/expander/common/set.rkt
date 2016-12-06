@@ -25,7 +25,9 @@
          for/seteqv
          for*/set
          for*/seteq
-         in-set)
+         in-set
+         list-suffix?
+         )
 
 (define set
   (case-lambda
@@ -124,3 +126,11 @@
                          (let ()
                            body ...)
                          #t)))
+
+(define (list-prefix? l r)
+  (cond [(null? l) #t]
+        [(null? r) #f]
+        [(eq? (car l) (car r)) (list-prefix? (cdr l) (cdr r))]
+        [else #f]))
+(define (list-suffix? l r)
+  (list-prefix? (reverse l) (reverse r)))

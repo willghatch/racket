@@ -113,7 +113,7 @@
     (define free=id (rename-transformer-target val))
     (unless (syntax-property free=id 'not-free-identifier=?)
       (define b (resolve+shift id phase #:exactly? #t #:immediate? #t))
-      (add-binding-in-scopes! (syntax-scope-set id phase) (syntax-e id) (binding-set-free=id b free=id)))))
+      (add-binding-in-scopes! (syntax-scope-list id phase) (syntax-e id) (binding-set-free=id b free=id)))))
 
 ;; Helper to add a `free-identifier=?` equivance to a binding
 (define (binding-set-free=id b free=id)

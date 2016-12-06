@@ -94,15 +94,15 @@
                      (identifier? id)))))))
 
 (define (extract-scope-list stx)
-  (map generalize-scope (set->list (syntax-scope-set stx 0))))
+  (map generalize-scope (syntax-scope-list stx 0)))
 
 (define (syntax-with-one-scope? stx)
   (and (syntax? stx)
-       (= 1 (set-count (syntax-scope-set stx 0)))))
+       (= 1 (length (syntax-scope-list stx 0)))))
 
 (define (extract-scope stx)
-  (define s (syntax-scope-set stx 0))
-  (generalize-scope (set-first s)))
+  (define l (syntax-scope-list stx 0))
+  (generalize-scope (car l)))
 
 (define (unpack-defined-syms v)
   (hash-copy ; make mutable

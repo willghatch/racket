@@ -22,7 +22,7 @@
 (define runtime-mpi (module-path-index-join ''#%runtime #f))
 
 (define (add-runtime-primitive! sym)
-  (add-binding-in-scopes! (syntax-scope-set runtime-stx 0)
+  (add-binding-in-scopes! (syntax-scope-list runtime-stx 0)
                           sym
                           (make-module-binding runtime-mpi 0 sym)))
 
