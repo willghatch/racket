@@ -33,7 +33,7 @@
   ;; exists inside some binding form, so that form's scope will do
   ;; The inside-edge scope identifiers any form that appears (perhaps
   ;; through macro expansion) in the definition context
-  (define inside-sc (new-scope 'intdef))
+  (define inside-sc (new-scope 'b-intdef))
   (define init-bodys
     (for/list ([body (in-list bodys)])
       (add-scope body inside-sc)))

@@ -432,7 +432,7 @@
    [else
     (define new-scs
       (for/fold ([scs scs])
-                ([(sc-op-pair) (propagation-scope-ops prop)])
+                ([(sc-op-pair) (reverse (propagation-scope-ops prop))])
         (define sc (car sc-op-pair))
         (define op (cdr sc-op-pair))
         (fallback-update-first
@@ -616,10 +616,8 @@
                  #:get-scopes? [get-scopes? #f] ; gets scope list instead of binding
                  ;; For resolving bulk bindings in `free-identifier=?` chains:
                  #:extra-shifts [extra-shifts null])
-  (eprintf "~n~nresolving ~a~n" s)
   (define sym (syntax-content s))
   (let fallback-loop ([scs (syntax-scopes s)])
-    (eprintf "in fallback loop with: stx: ~a scopes: ~a~n" s scs )
     (cond
      [(and (not exactly?)
            (not get-scopes?)
@@ -632,10 +630,6 @@
         (let loop ([scopes scopes])
           (and (not (null? scopes))
                (or (for/or ([(b-scopes binding) (in-binding-table sym (scope-binding-table (car scopes)) s extra-shifts)])
-                     (eprintf "in best-pair loop with b-scopes ~a and binding ~a~n" b-scopes binding)
-                     (define last-best (car (reverse b-scopes)))
-                     (define last-scope (car (reverse scopes)))
-                     (eprintf "last best: ~a last scope ~a equal? ~a at phase ~a~n" last-best last-scope (equal? last-best last-scope) phase)
                      (and (equal? b-scopes scopes)
                           (cons b-scopes binding)))
                    (loop (cdr scopes))))))
@@ -648,16 +642,12 @@
                   (eqv? (length scopes)
                         (length best-scopes)))
               (if get-scopes?
-                  (begin (eprintf "returnig best-scopes ~a~n" best-scopes)
-                         best-scopes)
-                  (begin (eprintf "returning best-binding ~a~n" best-binding)
-                         best-binding)))]
+                  best-scopes
+                  best-binding))]
         [else
          (if (fallback? scs)
-             (begin (eprintf "returning to fallback loop...~n")
-                    (fallback-loop (fallback-rest scs)))
-             (begin (eprintf "returning #f~n")
-                    #f))])])))
+             (fallback-loop (fallback-rest scs))
+             #f)])])))
 
 ;; ----------------------------------------
 

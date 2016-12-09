@@ -1,5 +1,6 @@
 #lang racket/base
 (require "../common/set.rkt"
+         "../syntax/debug.rkt"
          "../syntax/syntax.rkt"
          "../syntax/property.rkt"
          "../syntax/scope.rkt"
@@ -30,7 +31,7 @@
 
 ;; Common expansion for `lambda` and `case-lambda`
 (define (lambda-clause-expander s disarmed-s formals bodys ctx log-renames-tag)
-  (define sc (new-scope 'local))
+  (define sc (new-scope 'lambda-local))
   (define phase (expand-context-phase ctx))
   ;; Parse and check formal arguments:
   (define ids (parse-and-flatten-formals formals sc disarmed-s))
@@ -157,7 +158,7 @@
     (define-match val-m disarmed-s #:unless syntaxes?
       '(let-values ([(id:val ...) val-rhs] ...)
         body ...+))
-   (define sc (new-scope 'local))
+   (define sc (new-scope 'let-local))
    (define phase (expand-context-phase ctx))
    (define frame-id (and syntaxes?
                          (make-reference-record))) ; accumulates info on referenced variables

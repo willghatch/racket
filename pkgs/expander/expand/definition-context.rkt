@@ -45,7 +45,7 @@
   (define frame-id (or (root-expand-context-frame-id ctx)
                        (and parent-ctx (internal-definition-context-frame-id parent-ctx))
                        (gensym)))
-  (define sc (new-scope 'intdef))
+  (define sc (new-scope 'd-intdef))
   (define def-ctx-scopes (expand-context-def-ctx-scopes ctx))
   (unless def-ctx-scopes (error "internal error: no box to accumulate definition-context scopes"))
   (set-box! def-ctx-scopes (cons sc (unbox def-ctx-scopes)))

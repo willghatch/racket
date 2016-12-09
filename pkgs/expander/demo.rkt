@@ -129,7 +129,6 @@
     (let-values ([(z) 10])
       (begin z (if (m 10) 1 2))))))
 
-(eprintf "\033[34mafter bookmark~n~n~n~n~n~n~n~n~n~n~n~n")
 
 "expansion not captured"
 (eval-expression
@@ -402,6 +401,7 @@
      (n (m)))))
  #rx"expanded syntax not in its original lexical context")
 
+(eprintf "\033[44mafter bookmark~n~n")
 "internal definition context"
 (eval-expression
  '(let-values ([(x) 10])

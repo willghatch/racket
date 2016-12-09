@@ -56,15 +56,18 @@
   (check 'namespace-syntax-introduce syntax? s)
   (check 'namespace-syntax-introduce namespace? ns)
   (define root-ctx (namespace-get-root-expand-ctx ns))
-  (define post-scope (root-expand-context-post-expansion-scope root-ctx))
-  (define other-namespace-scopes (for/list ([sc (in-list
+  #;(define post-scope (root-expand-context-post-expansion-scope root-ctx))
+  #;(define other-namespace-scopes (for/list ([sc (in-list
                                                  ;; `all-scopes-stx` corresponds to the initial import
                                                  (syntax-scope-list (root-expand-context-all-scopes-stx root-ctx)
                                                                    (namespace-phase ns)))]
                                             #:unless (equal? sc post-scope))
                                    sc))
+  (define all-namespace-scopes (syntax-scope-list
+                                (root-expand-context-all-scopes-stx root-ctx)
+                                (namespace-phase ns)))
   (define (add-ns-scopes s)
-    (syntax-transfer-shifts (push-scopes s (cons post-scope other-namespace-scopes))
+    (syntax-transfer-shifts (push-scopes s all-namespace-scopes)
                             (root-expand-context-all-scopes-stx root-ctx)
                             (or (namespace-declaration-inspector ns)
                                 (current-code-inspector))
