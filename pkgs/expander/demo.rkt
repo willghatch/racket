@@ -2,6 +2,7 @@
 (require "main.rkt"
          "common/set.rkt")
 
+
 ;; ----------------------------------------
 
 (define demo-ns (make-namespace))
@@ -401,7 +402,6 @@
      (n (m)))))
  #rx"expanded syntax not in its original lexical context")
 
-(eprintf "\033[44mafter bookmark~n~n")
 "internal definition context"
 (eval-expression
  '(let-values ([(x) 10])
@@ -457,6 +457,7 @@
     (m x y)))
  #:check 12)
 
+(eprintf "\033[44mafter bookmark~n~n")
 "set! transformer"
 (eval-expression
  '(let-values ([(real-one) 1]

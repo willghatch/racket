@@ -58,13 +58,10 @@
       (hash-set ht 'fallbacks (cdr hts))))
 
 (define (scope-list->context scs)
-  (sort
-   (for/list ([sc (in-list scs)])
-     (if (representative-scope? sc)
-         (vector (scope-id sc)
-                 (scope-kind sc)
-                 (multi-scope-name (representative-scope-owner sc)))
-         (vector (scope-id sc)
-                 (scope-kind sc))))
-   <
-   #:key (lambda (v) (vector-ref v 0))))
+  (for/list ([sc (in-list scs)])
+    (if (representative-scope? sc)
+        (vector (scope-id sc)
+                (scope-kind sc)
+                (multi-scope-name (representative-scope-owner sc)))
+        (vector (scope-id sc)
+                (scope-kind sc)))))

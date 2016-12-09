@@ -109,15 +109,19 @@
     (raise-argument-error 'internal-definition-context-introduce "internal-definition-context?" intdef))
   (unless (syntax? s)
     (raise-argument-error 'internal-definition-context-introduce "syntax?" s))
-  (add-intdef-scopes s intdef
-                     #:action (case mode
-                                [(add) add-scope]
-                                [(remove) remove-scope]
-                                [(flip) flip-scope]
-                                [else (raise-argument-error
-                                       internal-definition-context-introduce
-                                       "(or/c 'add 'remove 'flip)"
-                                       mode)])))
+  (define ctx (get-current-expand-context 'internal-definition-context-introduce))
+  (flip-introduction-scopes
+   (add-intdef-scopes (flip-introduction-scopes s ctx)
+                      intdef
+                      #:action (case mode
+                                 [(add) add-scope]
+                                 [(remove) remove-scope]
+                                 [(flip) flip-scope]
+                                 [else (raise-argument-error
+                                        internal-definition-context-introduce
+                                        "(or/c 'add 'remove 'flip)"
+                                        mode)]))
+   ctx))
 
 ;; internal-definition-context-seal
 (define (internal-definition-context-seal intdef) 
