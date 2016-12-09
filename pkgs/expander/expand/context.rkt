@@ -81,7 +81,7 @@
                   ns
                   empty-env
                   #hasheq() ; user-env
-                  push-scope ; post-expansion-scope-action
+                  (λ (s sc) (push-scopes s (list sc))) ; post-expansion-scope-action
                   null ; scopes
                   #f   ; def-ctx-scopes
                   (root-expand-context-frame-id root-ctx) ; binding-layer

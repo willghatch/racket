@@ -81,6 +81,7 @@
 (compile+eval-expression
  '(+ 1 1))
 
+
 (compile+eval-expression
  '(case-lambda
    [(x) (set! x 5)]
@@ -127,6 +128,8 @@
     ([(x) 5] [(y) (lambda (z) z)])
     (let-values ([(z) 10])
       (begin z (if (m 10) 1 2))))))
+
+(eprintf "\033[34mafter bookmark~n~n~n~n~n~n~n~n~n~n~n~n")
 
 "expansion not captured"
 (eval-expression

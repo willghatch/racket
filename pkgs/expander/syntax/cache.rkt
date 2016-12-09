@@ -29,7 +29,7 @@
        (let ([v (hash-ref c sym #f)])
          (and v
               (eqv? phase (entry-phase v))
-              (set=? scs (entry-scs v))
+              (equal? scs (entry-scs v))
               (entry-binding v)))))
 
 (define (resolve-cache-set! sym phase scs b)

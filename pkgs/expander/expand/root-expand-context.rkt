@@ -33,6 +33,10 @@
   (define module-scopes (list* post-expansion-scope
                                outside-scope
                                initial-scopes))
+  #;(define module-scopes (append initial-scopes
+                                (list
+                                 outside-scope
+                                 post-expansion-scope)))
   (root-expand-context module-scopes
                        post-expansion-scope
                        (new-scope 'module) ; top-level-bind-scope

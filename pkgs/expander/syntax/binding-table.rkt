@@ -230,10 +230,10 @@
   (set-union
    (for/seteq ([(sym at-sym) (in-hash ht)]
                #:when (for/or ([an-scs (in-hash-keys at-sym)])
-                        (subset? an-scs scs)))
+                        (equal? an-scs scs)))
               sym)
    (for*/seteq ([bba (in-list bulk-bindings)]
-                #:when (subset? (bulk-binding-at-scopes bba) scs)
+                #:when (equal? (bulk-binding-at-scopes bba) scs)
                 [sym (in-hash-keys
                       (bulk-binding-symbols (bulk-binding-at-bulk bba) s extra-shifts))])
                sym)))

@@ -20,7 +20,7 @@
          remove-scopes
          flip-scope
          flip-scopes
-         push-scope
+         push-scopes
          
          syntax-e ; handles lazy scope and taint propagation
          syntax-e/no-taint ; like `syntax-e`, but doesn't explode a dye pack
@@ -77,17 +77,17 @@
            (struct-out representative-scope)
            scope-list-at-fallback))
 
-;; TODO - no longer correct for lists
-;; A scope represents a distinct "dimension" of binding. We can attach
+;; todo - no longer correct for lists
+;; a scope represents a distinct "dimension" of binding. we can attach
 ;; the bindings for a set of scopes to an arbitrary scope in the set;
 ;; we pick the most recently allocated scope to make a binding search
-;; faster and to improve GC, since non-nested binding contexts will
+;; faster and to improve gc, since non-nested binding contexts will
 ;; generally not share a most-recent scope.
 
 (struct scope (id             ; internal scope identity; used for sorting
                kind           ; debug info
                [binding-table #:mutable]) ; see "binding-table.rkt"
-        ;; Custom printer:
+        ;; custom printer:
         #:property prop:custom-write
         (lambda (sc port mode)
           (write-string "#<scope:" port)
@@ -133,16 +133,16 @@
 (define (deserialize-scope-fill! s bt)
   (set-scope-binding-table! s bt))
 
-;; A "multi-scope" represents a group of scopes, each of which exists
-;; only at a specific phase, and each in a distinct phase. This
-;; infinite group of scopes is realized on demand. A multi-scope is
+;; a "multi-scope" represents a group of scopes, each of which exists
+;; only at a specific phase, and each in a distinct phase. this
+;; infinite group of scopes is realized on demand. a multi-scope is
 ;; used to represent the inside of a module, where bindings in
 ;; different phases are distinguished by the different scopes within
 ;; the module's multi-scope.
 ;;
-;; To compute a syntax's set of scopes at a given phase, the
+;; to compute a syntax's set of scopes at a given phase, the
 ;; phase-specific representative of the multi scope is combined with
-;; the phase-independent scopes. Since a multi-scope corresponds to
+;; the phase-independent scopes. since a multi-scope corresponds to
 ;; a module, the number of multi-scopes in a syntax is expected to
 ;; be small.
 (struct multi-scope (id       ; identity
@@ -242,14 +242,14 @@
                           phase
                           (lambda () (shifted-multi-scope phase multi-scope))))]))
 
-;; A `shifted-to-label-phase` record in the `phase` field of a
+;; a `shifted-to-label-phase` record in the `phase` field of a
 ;; `shifted-multi-scope` makes the shift reversible; when we're
 ;; looking up the label phase, then use the representative scope at
 ;; phase `from`; when we're looking up a non-label phase, there is no
 ;; corresponding representative scope
 (struct shifted-to-label-phase (from) #:prefab)
 
-;; Each new scope increments the counter, so we can check whether one
+;; each new scope increments the counter, so we can check whether one
 ;; scope is newer than another.
 (define id-counter 0)
 (define (new-scope-id!)
@@ -261,7 +261,7 @@
   ;; having a larger id
   (- (new-scope-id!)))
 
-;; A shared "outside-edge" scope for all top-level contexts
+;; a shared "outside-edge" scope for all top-level contexts
 (define top-level-common-scope (scope 0 'module empty-binding-table))
 
 (define (new-scope kind)
@@ -271,7 +271,7 @@
   (intern-shifted-multi-scope 0 (multi-scope (new-scope-id!) name (make-hasheqv) (box (hasheqv)) (box (hash)))))
 
 (define (multi-scope-to-scope-at-phase ms phase)
-  ;; Get the identity of `ms` at phase`
+  ;; get the identity of `ms` at phase`
   (or (hash-ref (multi-scope-scopes ms) phase #f)
       (let ([s (representative-scope (new-scope-id!) 'module
                                      empty-binding-table
@@ -300,7 +300,7 @@
          [else (phase<? p1 p2)]))
       ((multi-scope-id ms1) . < . (multi-scope-id ms2))))
 
-;; Adding, removing, or flipping a scope is propagated
+;; adding, removing, or flipping a scope is propagated
 ;; lazily to subforms
 (define (apply-scope s sc op prop-op)
   (struct-copy syntax s
@@ -341,7 +341,7 @@
    [(datum-has-elements? content) (taint-content content)]
    [else content]))
 
-;; When a representative-scope is manipulated, we want to
+;; when a representative-scope is manipulated, we want to
 ;; manipulate the multi scope, instead (at a particular
 ;; phase shift)
 (define (generalize-scope sc)
@@ -371,9 +371,9 @@
   (for/fold ([s s]) ([sc (in-list (reverse scs))])
     (flip-scope s sc)))
 
-;; Pushes a multi-scope to accomodate multiple top-level namespaces.
-;; See "fallback.rkt".
-(define (push-scope s sms)
+;; pushes a multi-scope to accomodate multiple top-level namespaces.
+;; see "fallback.rkt".
+#;(define (push-scope s sms)
   (define-memo-lite (push scs/maybe-fallbacks)
     (define scs (fallback-first scs/maybe-fallbacks))
     (cond
@@ -381,6 +381,21 @@
      [(list-member? scs sms) scs/maybe-fallbacks]
      [else (fallback-push (list-add scs sms)
                           scs/maybe-fallbacks)]))
+  (syntax-map s
+              (lambda (tail? x) x)
+              (lambda (s d)
+                (struct-copy syntax s
+                             [content d]
+                             [scopes (push (syntax-scopes s))]))
+              syntax-e/no-taint))
+(define (push-scopes s new-scs)
+  (define-memo-lite (push scs/maybe-fallbacks)
+    (define scs (fallback-first scs/maybe-fallbacks))
+    (cond
+      [(null? scs) new-scs]
+      [(andmap (λ (new-sc) (list-member? scs new-sc)) new-scs) scs/maybe-fallbacks]
+      [else (fallback-push new-scs
+                           scs/maybe-fallbacks)]))
   (syntax-map s
               (lambda (tail? x) x)
               (lambda (s d)
@@ -601,8 +616,10 @@
                  #:get-scopes? [get-scopes? #f] ; gets scope list instead of binding
                  ;; For resolving bulk bindings in `free-identifier=?` chains:
                  #:extra-shifts [extra-shifts null])
+  (eprintf "~n~nresolving ~a~n" s)
   (define sym (syntax-content s))
   (let fallback-loop ([scs (syntax-scopes s)])
+    (eprintf "in fallback loop with: stx: ~a scopes: ~a~n" s scs )
     (cond
      [(and (not exactly?)
            (not get-scopes?)
@@ -615,6 +632,10 @@
         (let loop ([scopes scopes])
           (and (not (null? scopes))
                (or (for/or ([(b-scopes binding) (in-binding-table sym (scope-binding-table (car scopes)) s extra-shifts)])
+                     (eprintf "in best-pair loop with b-scopes ~a and binding ~a~n" b-scopes binding)
+                     (define last-best (car (reverse b-scopes)))
+                     (define last-scope (car (reverse scopes)))
+                     (eprintf "last best: ~a last scope ~a equal? ~a at phase ~a~n" last-best last-scope (equal? last-best last-scope) phase)
                      (and (equal? b-scopes scopes)
                           (cons b-scopes binding)))
                    (loop (cdr scopes))))))
@@ -627,12 +648,16 @@
                   (eqv? (length scopes)
                         (length best-scopes)))
               (if get-scopes?
-                  best-scopes
-                  best-binding))]
+                  (begin (eprintf "returnig best-scopes ~a~n" best-scopes)
+                         best-scopes)
+                  (begin (eprintf "returning best-binding ~a~n" best-binding)
+                         best-binding)))]
         [else
          (if (fallback? scs)
-             (fallback-loop (fallback-rest scs))
-             #f)])])))
+             (begin (eprintf "returning to fallback loop...~n")
+                    (fallback-loop (fallback-rest scs)))
+             (begin (eprintf "returning #f~n")
+                    #f))])])))
 
 ;; ----------------------------------------
 
