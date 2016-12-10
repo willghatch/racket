@@ -252,7 +252,8 @@
                         [new-bindings-for-sym
                          (in-value
                           (for/hash ([(scopes binding) (in-immutable-hash bindings-for-sym)]
-                                     #:when (subset? scopes reachable-scopes))
+                                     #:when (subset? (list->seteq scopes)
+                                                     reachable-scopes))
                             (values (intern-scopes scopes state) binding)))]
                         #:when (positive? (hash-count new-bindings-for-sym)))
             (values sym new-bindings-for-sym)))
@@ -260,7 +261,8 @@
           (if (hash? bt)
               null
               (for/list ([bba (in-list (table-with-bulk-bindings-bulk-bindings bt))]
-                         #:when (subset? (bulk-binding-at-scopes bba) reachable-scopes))
+                         #:when (subset? (list->seteq (bulk-binding-at-scopes bba))
+                                         reachable-scopes))
                 (struct-copy bulk-binding-at bba
                              [scopes (intern-scopes (bulk-binding-at-scopes bba) state)]))))
         (define new-bt

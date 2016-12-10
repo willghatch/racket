@@ -1,5 +1,5 @@
 #lang racket/base
-(require ;"../common/set.rkt"
+(require "../common/set.rkt"
          "../compile/serialize-property.rkt"
          "../compile/serialize-state.rkt"
          "../common/memo.rkt"
@@ -97,7 +97,7 @@
           (write-string ">" port))
         #:property prop:serialize
         (lambda (s ser-push! state)
-          (unless (list-member? (serialize-state-reachable-scopes state) s)
+          (unless (set-member? (serialize-state-reachable-scopes state) s)
             (error "internal error: found supposedly unreachable scope"))
           (cond
            [(eq? s top-level-common-scope)

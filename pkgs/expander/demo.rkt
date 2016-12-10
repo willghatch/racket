@@ -457,7 +457,6 @@
     (m x y)))
  #:check 12)
 
-(eprintf "\033[44mafter bookmark~n~n")
 "set! transformer"
 (eval-expression
  '(let-values ([(real-one) 1]
@@ -596,7 +595,19 @@
                                               #f
                                               (list (quote-syntax quote)
                                                     (car (cdr (syntax-e stx))))))))
+(eval-expression '(begin
+                    (eprintf "~a~n" (syntax-debug-info (quote-syntax top-m) 0 #t))
+                    (eprintf "~a~n" (syntax-debug-info (quote-syntax top-x) 0 #t))
+                    8
+                    #;(top-m 8)) #:check 8)
+(eval-expression '(begin
+                    (eprintf "~a~n" (syntax-debug-info (quote-syntax top-m) 0 #t))
+                    (eprintf "~a~n" (syntax-debug-info (quote-syntax top-x) 0 #t))
+                    (eprintf "\u1b[32mTODO -- implement swap in scope.rkt~n")
+                    8
+                    #;(top-m 8)) #:check 8)
 (eval-expression '(top-m 8) #:check 8)
+(eprintf "\033[44mafter bookmark~n~n")
 (eval-expression '(define-syntaxes (top-def-top-x)
                    (lambda (stx)
                      (quote-syntax
