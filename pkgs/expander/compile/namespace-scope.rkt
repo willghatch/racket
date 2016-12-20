@@ -20,47 +20,30 @@
 ;; indicate being original to the namespace. We swap those groups
 ;; separately.
 
-(struct namespace-scopes (post other) #:prefab)
+(struct namespace-scopes (scs) #:prefab)
 
 ;; Swapping function, used at run time:
 (define (swap-top-level-scopes s original-scopes-s new-ns)
-  (define-values (old-scs-post old-scs-other)
-    (if (namespace-scopes? original-scopes-s)
-        (values (namespace-scopes-post original-scopes-s)
-                (namespace-scopes-other original-scopes-s))
-        (decode-namespace-scopes original-scopes-s)))
-  (define-values (new-scs-post new-scs-other) (extract-namespace-scopes/values new-ns))
-  (syntax-swap-scopes (syntax-swap-scopes s old-scs-post new-scs-post)
-                      old-scs-other new-scs-other))
-
-(define (extract-namespace-scopes/values ns)
-  (define root-ctx (namespace-get-root-expand-ctx ns))
-  (define post-expansion-sc (root-expand-context-post-expansion-scope root-ctx))
-  (values (list post-expansion-sc)
-          (remove post-expansion-sc
-                  (root-expand-context-module-scopes root-ctx))))
+  (define old-scs (if (pair? original-scopes-s)
+                      original-scopes-s
+                      (decode-namespace-scopes original-scopes-s)))
+  (define new-scs (extract-namespace-scopes new-ns))
+  (syntax-swap-scopes s old-scs new-scs))
 
 (define (extract-namespace-scopes ns)
-  (define-values (scs-post scs-other) (extract-namespace-scopes/values ns))
-  (namespace-scopes scs-post scs-other))
+  (define root-ctx (namespace-get-root-expand-ctx ns))
+  (root-expand-context-module-scopes root-ctx))
 
 ;; Extract namespace scopes to a syntax object, used at compile time:
 (define (encode-namespace-scopes ns)
-  (define-values (post-expansion-scs other-scs) (extract-namespace-scopes/values ns))
-  (define post-expansion-s (add-scopes (datum->syntax #f 'post)
-                                       post-expansion-scs))
-  (define other-s (add-scopes (datum->syntax #f 'other)
-                              other-scs))
-  (datum->syntax #f (vector post-expansion-s other-s)))
+  (define scs (extract-namespace-scopes ns))
+  (define s (add-scopes (datum->syntax #f 'post)
+                        scs))
+  (datum->syntax #f s))
 
 ;; Decoding, used at run time:
 (define (decode-namespace-scopes stx)
-  (define vec (syntax-e stx))
-  (values (syntax-scope-list (vector-ref vec 0) 0)
-          (syntax-scope-list (vector-ref vec 1) 0)))
+  (syntax-scope-list stx 0))
 
 (define (namespace-scopes=? nss1 nss2)
-  (and (equal? (namespace-scopes-post nss1)
-               (namespace-scopes-post nss2))
-       (equal? (namespace-scopes-other nss1)
-               (namespace-scopes-other nss2))))
+  (equal? nss1 nss2))

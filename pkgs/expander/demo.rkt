@@ -595,19 +595,7 @@
                                               #f
                                               (list (quote-syntax quote)
                                                     (car (cdr (syntax-e stx))))))))
-(eval-expression '(begin
-                    (eprintf "~a~n" (syntax-debug-info (quote-syntax top-m) 0 #t))
-                    (eprintf "~a~n" (syntax-debug-info (quote-syntax top-x) 0 #t))
-                    8
-                    #;(top-m 8)) #:check 8)
-(eval-expression '(begin
-                    (eprintf "~a~n" (syntax-debug-info (quote-syntax top-m) 0 #t))
-                    (eprintf "~a~n" (syntax-debug-info (quote-syntax top-x) 0 #t))
-                    (eprintf "\u1b[32mTODO -- implement swap in scope.rkt~n")
-                    8
-                    #;(top-m 8)) #:check 8)
 (eval-expression '(top-m 8) #:check 8)
-(eprintf "\033[44mafter bookmark~n~n")
 (eval-expression '(define-syntaxes (top-def-top-x)
                    (lambda (stx)
                      (quote-syntax
@@ -654,6 +642,7 @@
 (eval-module-declaration '(module m2 '#%kernel
                            (#%require 'm1)
                            (print def:x) (newline)))
+(eprintf "\033[44mafter bookmark~n~n")
 
 (check-print
  (eval-expression '(#%require 'm2))

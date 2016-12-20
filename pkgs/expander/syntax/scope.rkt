@@ -534,22 +534,28 @@
 ;; additional scopes due to `module->namespace` on a module that was
 ;; expanded multiple times (where each expansion adds scopes).
 (define (syntax-swap-scopes s src-scopes dest-scopes)
-  s
-  #;(if (equal? src-scopes dest-scopes)
+  (if (equal? src-scopes dest-scopes)
       s
       (let ([src-scs
-             (for/seteq ([sc (in-set src-scopes)])
+             (for/list ([sc (in-list src-scopes)])
                (generalize-scope sc))]
             [dest-scs
-             (for/seteq ([sc (in-set dest-scopes)])
+             (for/list ([sc (in-list dest-scopes)])
                (generalize-scope sc))])
+        (define (postfix-split postfix scs prefix-rev)
+          (cond [(null? scs) #f]
+                [(equal? postfix scs)
+                 (reverse prefix-rev)]
+                [else (postfix-split postfix (cdr scs)
+                                     (cons (car scs) prefix-rev))]))
         (define-memo-lite (swap-scs scs)
           (fallback-update-first
            scs
            (lambda (scs)
-             (if (subset? src-scs scs)
-                 (set-union (set-subtract scs src-scs) dest-scs)
-                 scs))))
+             (let ([prefix (postfix-split src-scs scs '())])
+               (if prefix
+                   (append prefix dest-scs)
+                   scs)))))
         (syntax-map s
                     (lambda (tail? d) d)
                     (lambda (s d)

@@ -1,5 +1,5 @@
 #lang racket/base
-(require (only-in "../syntax/syntax.rkt" syntax-mpi-shifts empty-syntax)
+(require (only-in "../syntax/syntax.rkt" syntax-mpi-shifts empty-syntax syntax-scopes)
          (only-in "../syntax/scope.rkt" add-scopes push-scopes syntax-scope-list)
          (only-in "../syntax/fallback.rkt" fallback-first)
          (only-in "../syntax/binding.rkt" resolve+shift syntax-transfer-shifts)
@@ -63,9 +63,8 @@
                                                                    (namespace-phase ns)))]
                                             #:unless (equal? sc post-scope))
                                    sc))
-  (define all-namespace-scopes (syntax-scope-list
-                                (root-expand-context-all-scopes-stx root-ctx)
-                                (namespace-phase ns)))
+  (define all-namespace-scopes (syntax-scopes
+                                (root-expand-context-all-scopes-stx root-ctx)))
   (define (add-ns-scopes s)
     (syntax-transfer-shifts (push-scopes s all-namespace-scopes)
                             (root-expand-context-all-scopes-stx root-ctx)
