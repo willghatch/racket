@@ -1371,7 +1371,6 @@
 ;; ----------------------------------------
 ;; top-level fallbacks
 
-(eprintf "\033[44mafter bookmark~n~n")
 (define s-only-in-demo (namespace-syntax-introduce (datum->syntax #f 'car) demo-ns))
 
 (define alt-ns (make-namespace))
@@ -1386,9 +1385,8 @@
              #f)
 (check-value (length (hash-ref (syntax-debug-info s-also-in-alt) 'fallbacks null))
              1)
-(check-value (list->set (hash-ref (syntax-debug-info s-also-in-alt) 'context #f))
-             (set-union (list->set (hash-ref (syntax-debug-info s-only-in-demo) 'context #f))
-                        (list->set (hash-ref (syntax-debug-info s-only-in-alt) 'context #f))))
+(check-value (hash-ref (syntax-debug-info s-also-in-alt) 'context #f)
+             (hash-ref (syntax-debug-info s-only-in-alt) 'context #f))
 
 (check-value (cadr (identifier-binding s-only-in-demo))
              'car)
@@ -1411,5 +1409,7 @@
 
 (check-value (cadr (identifier-binding s-only-in-alt))
              'kar)
+
+;; an ambiguous binding now returns the newer thing.
 (check-value (cadr (identifier-binding s-also-in-alt))
-             'car) ; because using combined scopes is ambiguous
+             'kar) ; because using combined scopes is ambiguous
