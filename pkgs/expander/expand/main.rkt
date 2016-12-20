@@ -370,7 +370,7 @@
 
 (define (maybe-add-use-site-scope s ctx binding)
   (cond
-   [(and (root-expand-context-use-site-scopes ctx)
+   #;[(and (root-expand-context-use-site-scopes ctx)
          (matching-frame? (root-expand-context-frame-id ctx)
                           (binding-frame-id binding)))
     ;; We're in a recursive definition context where use-site scopes

@@ -1001,7 +1001,6 @@
                            (#%provide y)
                            (define-syntaxes (y) (make-rename-transformer
                                                  (quote-syntax x)))))
-(eprintf "\033[44mafter bookmark~n~n")
 
 (eval-module-declaration '(module checks-free=id '#%kernel
                            (#%require (for-syntax '#%kernel)
@@ -1372,6 +1371,7 @@
 ;; ----------------------------------------
 ;; top-level fallbacks
 
+(eprintf "\033[44mafter bookmark~n~n")
 (define s-only-in-demo (namespace-syntax-introduce (datum->syntax #f 'car) demo-ns))
 
 (define alt-ns (make-namespace))
