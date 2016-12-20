@@ -284,9 +284,9 @@
                  ((binding-reach-scopes-ref binding) binding)))
   (when v
     (cond
-     [(subset? scopes reachable-scopes)
-      (reach v)]
+      [(subset? (list->seteq scopes) reachable-scopes)
+       (reach v)]
      [else
-      (for ([sc (in-set scopes)]
+      (for ([sc (in-list scopes)]
             #:unless (set-member? reachable-scopes sc))
         (register-trigger sc v))])))

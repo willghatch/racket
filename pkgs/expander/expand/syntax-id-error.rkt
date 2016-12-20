@@ -37,7 +37,8 @@
            (for/list ([fallback (in-list fallbacks)]
                       [layer (in-naturals (add1 layer))])
              (loop fallback layer))))))
-    (define common-scopes
+    (define common-scopes (seteq))
+    #;(define common-scopes
       (if (null? relevant-scope-sets)
           (set)
           (for/fold ([s (list->set (car relevant-scope-sets))]) ([l (in-list relevant-scope-sets)])

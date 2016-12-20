@@ -637,6 +637,7 @@
           (and (not (null? scopes))
                (or (for/or ([(b-scopes binding) (in-binding-table sym (scope-binding-table (car scopes)) s extra-shifts)])
                      (and (equal? b-scopes scopes)
+                          binding
                           (cons b-scopes binding)))
                    (loop (cdr scopes))))))
 

@@ -113,7 +113,7 @@
                (cons enclosing-mod (unbox mpis-for-enclosing-reset))))
    
    (define apply-module-scopes
-     (make-apply-module-scopes outside-scope inside-scope 
+     (make-apply-module-scopes inside-scope outside-scope
                                init-ctx keep-enclosing-scope-at-phase
                                self enclosing-self enclosing-mod))
 

@@ -642,7 +642,6 @@
 (eval-module-declaration '(module m2 '#%kernel
                            (#%require 'm1)
                            (print def:x) (newline)))
-(eprintf "\033[44mafter bookmark~n~n")
 
 (check-print
  (eval-expression '(#%require 'm2))
@@ -1002,6 +1001,7 @@
                            (#%provide y)
                            (define-syntaxes (y) (make-rename-transformer
                                                  (quote-syntax x)))))
+(eprintf "\033[44mafter bookmark~n~n")
 
 (eval-module-declaration '(module checks-free=id '#%kernel
                            (#%require (for-syntax '#%kernel)
