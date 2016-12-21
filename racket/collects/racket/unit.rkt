@@ -719,7 +719,7 @@
                          ((((sid ...) . sbody) ...) all-stx-defs)
                          ((((pvid ...) . pvbody) ...) all-post-val-defs))
              #`(begin
-                 (define signature-tag (gensym))
+                 (define #,(intro #'signature-tag) (gensym))
                  (define-syntax #,sigid
                    (make-set!-transformer
                     #,(intro
