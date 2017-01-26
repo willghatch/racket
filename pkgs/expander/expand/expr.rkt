@@ -657,12 +657,27 @@
      (unless binding
        (raise-unbound-syntax-error #f "unbound identifier" s var-id null
                                    (syntax-debug-info-string var-id ctx)))
+     (define-values (t primitive? insp-of-t)
+       (lookup binding ctx var-id
+               #:in s
+               #:out-of-context-as-variable? (expand-context-in-local-expand? ctx)))
+     (define result-s (substitute-variable var-id t
+                                           #:no-stops?
+                                           (free-id-set-empty-or-just-module*?
+                                            (expand-context-stops ctx))))
      (if (expand-context-to-parsed? ctx)
          (parsed-#%variable-reference (keep-properties-only s)
                                       (if (top-m)
-                                          (parsed-top-id var-id binding)
-                                          (parsed-id var-id binding)))
-         s)]
+                                          (parsed-top-id result-s binding)
+                                          (parsed-id result-s binding)))
+         (if (id-m)
+             (syntax-rearm (datum->syntax disarmed-s
+                                          (list (id-m '#%variable-reference) result-s))
+                           s)
+             (syntax-rearm (datum->syntax disarmed-s
+                                          (list (top-m '#%variable-reference)
+                                                (cons (top-m '#%top) result-s)))
+                           s)))]
     [else
      (if (expand-context-to-parsed? ctx)
          (parsed-#%variable-reference (keep-properties-only s) #f)
