@@ -629,6 +629,9 @@ rktio_tri_t rktio_poll_process_done(rktio_t *rktio, rktio_process_t *sp);
 
 typedef struct rktio_status_t {
   rktio_bool_t running;
+    // TODO - WGH - how should this be represented?  When a process is continued should we say it's running again?  Since the stop/continue status goes away after being read once, I need to be sure I'm saving it, not overwriting it with a waitpid that doesn't give a new status, and returning it appropriately.
+  rktio_bool_t stopped;
+  rktio_bool_t resumed;
   int result;
 } rktio_status_t;
 

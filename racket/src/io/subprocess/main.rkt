@@ -189,6 +189,9 @@
   (check who subprocess? sp)
   (void (sync sp)))
 
+;; TODO - WGH - add subprocess-wait/stopped or something that waits for a process to be done OR to change runstate/stopstatus
+;; TODO - WGH - add subprocess-continue or something to send SIGCONT to a subprocess?  This can be done with the FFI, but if I don't get CONTINUED messages (eg. they may not be supported on MacOS), then I need to track when the subprocess is continued to be able to set the subprocess as 'running again.
+
 ;; ----------------------------------------
 
 (define/who (subprocess-status sp)
@@ -203,6 +206,7 @@
      (rktio_free r)
      (end-atomic)
      'running]
+    ;; TODO - WGH - add 'stopped, 'continued statuses, or add a different function that returns those flags
     [else
      (no-custodian! sp)
      (define v (rktio_status_result r))
