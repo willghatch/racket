@@ -66,6 +66,7 @@
 (define-function () #f rktio_process_result_stderr_fd)
 (define-function () #f rktio_process_result_process)
 (define-function () #f rktio_status_running)
+(define-function () #f rktio_status_stopped)
 (define-function () #f rktio_status_result)
 (define-function () #f rktio_pipe_results)
 

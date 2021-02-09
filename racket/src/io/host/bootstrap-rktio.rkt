@@ -207,6 +207,8 @@
 
 (define (rktio_status_running r)
   (Rrktio_status_t-running (cast r _pointer _Rrktio_status_t-pointer)))
+(define (rktio_status_stopped r)
+  (Rrktio_status_t-stopped (cast r _pointer _Rrktio_status_t-pointer)))
 (define (rktio_status_result r)
   (Rrktio_status_t-result (cast r _pointer _Rrktio_status_t-pointer)))
 

@@ -33,7 +33,7 @@ struct rktio_process_t {
   int is_group, in_group;
 #ifdef CENTRALIZED_SIGCHILD
   short done;
-  short stopstatus;
+  short stopped;
   int status;
 #endif
 #ifdef RKTIO_SYSTEM_WINDOWS
@@ -53,6 +53,8 @@ static int extract_child_status(int status)
     status = WEXITSTATUS(status);
   else if (WIFSIGNALED(status))
     status = WTERMSIG(status) + 128;
+  else if (WIFSTOPPED(status))
+    status = 0;
   else
     status = -1;
 
@@ -77,6 +79,7 @@ typedef struct Child_Status {
   int pid;
   int status;
   char done;
+  char stopped;
   char unneeded; /* not in a group; result not needed */
   char in_group;
   rktio_signal_handle_t *signal_fd;
@@ -104,12 +107,13 @@ static Child_Status *unused_pid_statuses = NULL;
 static void add_group_signal_fd(rktio_signal_handle_t *signal_fd);
 static void remove_group_signal_fd(rktio_signal_handle_t *signal_fd);
 static void do_group_signal_fds();
-static int centralized_get_child_status(int pid, int in_group, int can_check_group, int *status);
+static int centralized_get_child_status(int pid, int in_group, int can_check_group, int *status, int *stopped);
 static int raw_get_child_status(int pid, int *status, int done_only, int do_remove, int do_free);
 
-static void add_child_status(int pid, int status)
+static void add_child_status(int pid, int status, int stopped)
 {
   Child_Status *st;
+  int done = !stopped;
 
   /* Search for existing record, which will have a signal_fd: */
   pthread_mutex_lock(&child_status_lock);
@@ -132,16 +136,24 @@ static void add_child_status(int pid, int status)
   }
   // TODO - WGH - only set done if the process terminated, not for stopped/continued wait results
   st->status = status;
-  st->done = 1;
+  st->stopped = stopped;
+  st->done = done;
 
-  if (st->signal_fd && st->in_group)
-    remove_group_signal_fd(st->signal_fd);
+  /*
+  TODO - WGH - I'm not sure what should be done about these signals in the stop case.
+  I think all of these conditional statements should only be done when the process
+  is done.
+  */
+  if (done) {
+    if (st->signal_fd && st->in_group)
+      remove_group_signal_fd(st->signal_fd);
 
-  
-  if (st->signal_fd)
-    rktio_signal_received_at(st->signal_fd);
-  if (st->unneeded)
-    (void)raw_get_child_status(st->pid, NULL, 1, 1, 1);
+    if (st->signal_fd)
+      rktio_signal_received_at(st->signal_fd);
+    if (st->unneeded)
+      (void)raw_get_child_status(st->pid, NULL, 1, 1, 1);
+
+  }
 
   pthread_mutex_unlock(&child_status_lock);
 }
@@ -173,7 +185,7 @@ static int raw_get_child_status(int pid, int *status, int done_only, int do_remo
   return found;
 }
 
-int centralized_get_child_status(int pid, int in_group, int can_check_group, int *status)
+int centralized_get_child_status(int pid, int in_group, int can_check_group, int *status, int *stopped)
 {
   int found = 0;
 
@@ -185,12 +197,12 @@ int centralized_get_child_status(int pid, int in_group, int can_check_group, int
 
     do {
       // TODO - WGH - add WUNTRACED and WCONTINUED flags
-      pid2 = waitpid((pid_t)pid, &status, WNOHANG);
+      pid2 = waitpid((pid_t)pid, &status, WNOHANG | WUNTRACED);
     } while ((pid2 == -1) && (errno == EINTR));
 
     if (pid2 > 0)
       // TODO - WGH - only mark done and set status when not stopped/continued.
-      add_child_status(pid, extract_child_status(status));
+      add_child_status(pid, extract_child_status(status), WIFSTOPPED(status));
   }
 
   pthread_mutex_lock(&child_status_lock);
@@ -219,6 +231,7 @@ static int centralized_register_child(int pid, int in_group, rktio_signal_handle
     st->status = 0;
     st->unneeded = 0;
     st->done = 0;
+    st->stopped = 0;
     st->in_group = in_group;
 
     st->next = child_statuses;
@@ -555,7 +568,7 @@ static void do_group_signal_fds()
 typedef struct System_Child {
   pid_t id;
   short done;
-  short stopstatus;
+  short stopped;
   int status;
   struct System_Child *next;
 } System_Child;
@@ -649,11 +662,11 @@ static void check_child_done(rktio_t *rktio, pid_t pid)
 
       do {
           // TODO - WGH - add WUNTRACED and WCONTINUED flags when `is_unused` is false.
-        result = waitpid(check_pid, &status, WNOHANG);
+        result = waitpid(check_pid, &status, WNOHANG | WUNTRACED);
       } while ((result == -1) && (errno == EINTR));
 
       if (result > 0) {
-        if (is_unused) {
+        if (is_unused && !WIFSTOPPED(status)) {
           /* done with an inaccessible group id */
           void *next;
           next = (void **)unused[1];
@@ -671,13 +684,17 @@ static void check_child_done(rktio_t *rktio, pid_t pid)
         for (sc = rktio->system_children; sc; prev = sc, sc = sc->next) {
           if (sc->id == result) {
               // TODO - WGH - only mark done when actually terminated, check for stopped/continued status with WIFSTOPPED and WIFCONTINUED.  Set runstatus result in those cases.
-            sc->done = 1;
-            sc->status = status;
+            sc->done = !WIFSTOPPED(status);
+            if (WIFSTOPPED(status)) {
+              sc->stopped = 1;
+            } else {
+              sc->status = status;
 
-            if (prev) {
-              prev->next = sc->next;
-            } else
-              rktio->system_children = sc->next;
+              if (prev) {
+                prev->next = sc->next;
+              } else
+                rktio->system_children = sc->next;
+            }
           }
         }
       } else {
@@ -735,20 +752,27 @@ static void collect_process_time(rktio_t *rktio, DWORD w, rktio_process_t *sp)
 /*========================================================================*/
 
 int rktio_poll_process_done(rktio_t *rktio, rktio_process_t *sp)
+/* TODO-WGH - maybe rename this to rktio_poll_process_run_status, since it now returns 3 status flags.
+   Or maybe it should only return a bool about whether it's stopped?  It sets the process stopped flag as a side effect, so maybe the right thing to do is use this when checking run status, then check the process flag if this doesn't return that it's done.
+ */
 {
 #if defined(RKTIO_SYSTEM_UNIX)
 # if defined(CENTRALIZED_SIGCHILD)
   {
     int status;
+    int stopped;
     if (!sp->done) {
-      if (centralized_get_child_status(sp->pid, sp->in_group, 1, &status)) {
-        // TODO - WGH - check done/stopped/continued status, set `status` only if it's actually terminated.
-        sp->done = 1;
-        sp->status = status;
-        centralized_ended_child();
-        return 1;
+      if (centralized_get_child_status(sp->pid, sp->in_group, 1, &status, &stopped)) {
+        if (stopped) {
+          return RKTIO_PROCESS_STOPPED;
+        } else {
+          sp->done = 1;
+          sp->status = status;
+          centralized_ended_child();
+          return RKTIO_PROCESS_DONE;
+        }
       }
-      return 0;
+      return RKTIO_PROCESS_RUNNING;
     }
     else
       return RKTIO_PROCESS_DONE;
@@ -760,7 +784,13 @@ int rktio_poll_process_done(rktio_t *rktio, rktio_process_t *sp)
     /* Check specific pid, in case the child has its own group
        (either given by us or given to itself): */
     check_child_done(rktio, sp->pid);
-    return sc->done;
+    if (sc->done) {
+      return RKTIO_PROCESS_DONE;
+    } else if (sc->stopped) {
+      return RKTIO_PROCESS_STOPPED;
+    } else {
+      return RKTIO_PROCESS_RUNNING;
+    }
   }
 # endif
 #endif
@@ -771,7 +801,11 @@ int rktio_poll_process_done(rktio_t *rktio, rktio_process_t *sp)
     if (sci) {
       if (GetExitCodeProcess(sci, &w)) {
         collect_process_time(rktio, w, sp);
-        return (w != STILL_ACTIVE);
+        if (w != STILL_ACTIVE) {
+          return RKTIO_PROCESS_DONE;
+        } else {
+          return RKTIO_PROCESS_RUNNING;
+        }
       } else
         return RKTIO_PROCESS_DONE;
     } else
@@ -784,7 +818,6 @@ int rktio_poll_process_done(rktio_t *rktio, rktio_process_t *sp)
 #endif
 }
 
-// TODO - WGH - probably add a rktio_poll_process_runstatus for running/stopped/continued status
 
 void rktio_poll_add_process(rktio_t *rktio, rktio_process_t *sp, rktio_poll_set_t *fds)
 {
@@ -800,7 +833,7 @@ void rktio_poll_add_process(rktio_t *rktio, rktio_process_t *sp, rktio_poll_set_
 
 rktio_status_t *rktio_process_status(rktio_t *rktio, rktio_process_t *sp)
 {
-  int stopped = 0, continued = 0, going = 0, status = 0;
+  int stopped = 0, going = 0, status = 0;
   rktio_status_t *result;
 
 #if defined(RKTIO_SYSTEM_UNIX)
@@ -808,10 +841,9 @@ rktio_status_t *rktio_process_status(rktio_t *rktio, rktio_process_t *sp)
   if (sp->done) {
     status = sp->status;
   } else {
-    if (!centralized_get_child_status(sp->pid, sp->in_group, 1, &status)) {
-      // TODO - WGH - set `going` or continued/stopped status
+    if (!centralized_get_child_status(sp->pid, sp->in_group, 1, &status, &stopped)) {
       going = 1;
-    } else {
+    } else if (!stopped) {
       sp->done = 1;
       sp->status = status;
       centralized_ended_child();
@@ -823,9 +855,11 @@ rktio_status_t *rktio_process_status(rktio_t *rktio, rktio_process_t *sp)
 
   if (sc->done) {
     status = sc->status;
-  } else
-    // TODO - WGH - set going/continued/stopped status
-   going = 1;
+  } else {
+    going = 1;
+    stopped = sc->stopped;
+  }
+
 # endif
 #else
 # ifdef RKTIO_SYSTEM_WINDOWS
@@ -847,8 +881,8 @@ rktio_status_t *rktio_process_status(rktio_t *rktio, rktio_process_t *sp)
 #endif
 
   result = malloc(sizeof(rktio_status_t));
-  // TODO - WGH - return continued/stopped status in addition to running status
   result->running = going;
+  result->stopped = stopped;
   result->result = (going ? 0 : status);
   return result;
 }

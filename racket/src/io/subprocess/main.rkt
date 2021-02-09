@@ -20,6 +20,8 @@
 (provide (rename-out [do-subprocess subprocess])
          subprocess?
          subprocess-wait
+         subprocess-continue
+         subprocess-stop-evt
          subprocess-status
          subprocess-kill
          subprocess-pid
@@ -189,6 +191,15 @@
   (check who subprocess? sp)
   (void (sync sp)))
 
+(define/who (subprocess-stopped-evt sp)
+  (check who subprocess? sp)
+  ;; TODO - above the subprocess struct definition uses a poller thing, and checks whether a subprocess is done (which maybe needs to be fixed).  I need to do something similar here, but include stopped events as well.
+  TODO)
+
+(define/who (subprocess-continue sp)
+  (check who subprocess? sp)
+  TODO)
+
 ;; TODO - WGH - add subprocess-wait/stopped or something that waits for a process to be done OR to change runstate/stopstatus
 ;; TODO - WGH - add subprocess-continue or something to send SIGCONT to a subprocess?  This can be done with the FFI, but if I don't get CONTINUED messages (eg. they may not be supported on MacOS), then I need to track when the subprocess is continued to be able to set the subprocess as 'running again.
 
@@ -203,10 +214,13 @@
      (end-atomic)
      (raise-rktio-error who r "status access failed")]
     [(rktio_status_running r)
+     ;; TODO - WGH - this changes the API by adding a new kind of result.  If this were a new function I would want to add it as a possible state, but it's a backwards-incompatible change.  Maybe this should still only return 'running, and there should be a new function that can tell whether a process is stopped?
+     (define result (if (rktio_status_stopped r)
+                        'stopped
+                        'running))
      (rktio_free r)
      (end-atomic)
-     'running]
-    ;; TODO - WGH - add 'stopped, 'continued statuses, or add a different function that returns those flags
+     result]
     [else
      (no-custodian! sp)
      (define v (rktio_status_result r))
